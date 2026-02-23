@@ -1,4 +1,5 @@
 import fs from 'fs';
+import http from 'http';
 import path from 'path';
 
 import {
@@ -416,11 +417,22 @@ function recoverPendingMessages(): void {
 }
 
 function ensureContainerSystemRunning(): void {
-  ensureContainerRuntimeRunning();
-  cleanupOrphans();
+  try {
+    ensureContainerRuntimeRunning();
+    cleanupOrphans();
+  } catch (err) {
+    logger.warn({ err }, 'Container runtime unavailable — agent execution disabled');
+  }
 }
 
 async function main(): Promise<void> {
+  // Health check server for Fly.io
+  const port = parseInt(process.env.PORT || '8080', 10);
+  http.createServer((_req, res) => {
+    res.writeHead(200);
+    res.end('ok');
+  }).listen(port, () => logger.info({ port }, 'Health check server listening'));
+
   ensureContainerSystemRunning();
   initDatabase();
   logger.info('Database initialized');
