@@ -11,6 +11,8 @@ Run setup steps automatically. Only pause when user action is required (WhatsApp
 
 **UX Note:** Use `AskUserQuestion` for all user-facing questions.
 
+**Sprite VM shortcut:** If `sprite-env` is available (detected in step 1), this is a Sprite VM. Sprite VMs are headless cloud machines — WhatsApp QR pairing is impractical. The setup automatically uses Telegram as the channel (TELEGRAM_ONLY=true) and Sprite services for process management. Steps 5 (Telegram), 6-8, 10, and 11 have Sprite-specific paths marked with **[Sprite]**.
+
 ## 1. Bootstrap (Node.js + Dependencies)
 
 Run `bash setup.sh` and parse the status block.
@@ -22,6 +24,7 @@ Run `bash setup.sh` and parse the status block.
 - If DEPS_OK=false → Read `logs/setup.log`. Try: delete `node_modules` and `package-lock.json`, re-run `bash setup.sh`. If native module build fails, install build tools (`xcode-select --install` on macOS, `build-essential` on Linux), then retry.
 - If NATIVE_OK=false → better-sqlite3 failed to load. Install build tools and re-run.
 - Record PLATFORM and IS_WSL for later steps.
+- **Detect Sprite VM:** Run `command -v sprite-env`. If found, set IS_SPRITE=true. This changes the channel (Telegram instead of WhatsApp) and service management (Sprite services instead of launchd/systemd).
 
 ## 2. Check Environment
 
@@ -83,7 +86,85 @@ AskUserQuestion: Claude subscription (Pro/Max) vs Anthropic API key?
 
 **API key:** Tell user to add `ANTHROPIC_API_KEY=<key>` to `.env`.
 
-## 5. WhatsApp Authentication
+## 5. Channel Setup
+
+### [Sprite] Telegram Channel
+
+If IS_SPRITE=true, Telegram is the only channel. Follow these sub-steps in order:
+
+#### 5a. Apply Telegram skill (if needed)
+
+Check `.nanoclaw/state.yaml` — if `telegram` is already in `applied_skills`, skip to 5b.
+
+Otherwise, apply the code changes:
+
+```bash
+# Initialize skills system if .nanoclaw/ doesn't exist
+npx tsx scripts/apply-skill.ts --init
+# Apply the telegram skill package
+npx tsx scripts/apply-skill.ts .claude/skills/add-telegram
+```
+
+Validate after applying:
+
+```bash
+npm test
+npm run build
+```
+
+All tests must pass and build must be clean before proceeding.
+
+#### 5b. Create Telegram Bot
+
+AskUserQuestion: Do you have a Telegram bot token, or do you need to create one?
+
+If they need to create one, tell them:
+
+> Open Telegram and search for `@BotFather`:
+>
+> 1. Send `/newbot` and follow prompts:
+>    - Bot name: Something friendly (e.g., "Andy Assistant")
+>    - Bot username: Must end with "bot" (e.g., "andy_ai_bot")
+> 2. Copy the bot token (looks like `123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11`)
+
+Wait for the user to provide the token.
+
+#### 5c. Configure environment
+
+Add to `.env`:
+
+```bash
+TELEGRAM_BOT_TOKEN=<their-token>
+TELEGRAM_ONLY=true
+```
+
+Sync to container environment:
+
+```bash
+mkdir -p data/env && cp .env data/env/env
+```
+
+#### 5d. Disable Group Privacy (for group chats)
+
+Tell the user:
+
+> **Important for group chats**: By default, Telegram bots only see @mentions and commands in groups. To let the bot see all messages:
+>
+> 1. Open Telegram and search for `@BotFather`
+> 2. Send `/mybots` and select your bot
+> 3. Go to **Bot Settings** > **Group Privacy** > **Turn off**
+>
+> This is optional if you only want trigger-based responses via @mentioning the bot.
+
+#### 5e. Build
+
+```bash
+npm run build
+```
+
+Then skip to step 6.
+
+### [Non-Sprite] WhatsApp Authentication
 
 **If TELEGRAM_ONLY=true in `.env`:** Skip this step entirely — WhatsApp is not needed.
 
@@ -100,16 +181,44 @@ Otherwise (macOS, desktop Linux, or WSL) → AskUserQuestion: QR code in browser
 
 **If failed:** qr_timeout → re-run. logged_out → delete `store/auth/` and re-run. 515 → re-run. timeout → ask user, offer retry.
 
-## 6. Configure Trigger and Channel Type
+## 6. Configure Trigger
+
+AskUserQuestion: What trigger word should the bot respond to? (default: `@Andy`)
+
+Record the trigger word and assistant name for step 8.
+
+### [Sprite] Telegram channel type
+
+AskUserQuestion: Will you use the bot in a private DM or a group chat?
+- **Private DM** (recommended for personal use) — no trigger needed, all messages go to the agent
+- **Group chat** — bot responds to @mentions or the configured trigger word
+
+### [Non-Sprite] WhatsApp channel type
 
 Get bot's WhatsApp number: `node -e "const c=require('./store/auth/creds.json');console.log(c.me.id.split(':')[0].split('@')[0])"`
 
-AskUserQuestion: Shared number or dedicated? → AskUserQuestion: Trigger word? → AskUserQuestion: Main channel type?
+AskUserQuestion: Shared number or dedicated? → AskUserQuestion: Main channel type?
 
 **Shared number:** Self-chat (recommended) or Solo group
 **Dedicated number:** DM with bot (recommended) or Solo group with bot
 
-## 7. Sync and Select Group (If Group Channel)
+## 7. Select Chat
+
+### [Sprite] Telegram chat registration
+
+**Private DM:** Tell the user:
+
+> 1. Open your bot in Telegram (search for its username)
+> 2. Send `/chatid` — it will reply with the chat ID (format: `tg:123456789`)
+
+**Group chat:** Tell the user:
+
+> 1. Add the bot to your Telegram group
+> 2. Send `/chatid` in the group — it will reply with the chat ID (format: `tg:-1001234567890`)
+
+Wait for the user to provide the chat ID. The service must be running for `/chatid` to work, so if the service is not yet started, note the chat ID will be collected after step 10 and return to this step then.
+
+### [Non-Sprite] WhatsApp chat selection
 
 **Personal chat:** JID = `NUMBER@s.whatsapp.net`
 **DM with bot:** Ask for bot's number, JID = `NUMBER@s.whatsapp.net`
@@ -123,6 +232,8 @@ AskUserQuestion: Shared number or dedicated? → AskUserQuestion: Trigger word? 
 ## 8. Register Channel
 
 Run `npx tsx setup/index.ts --step register -- --jid "JID" --name "main" --trigger "@TriggerWord" --folder "main"` plus `--no-trigger-required` if personal/DM/solo, `--assistant-name "Name"` if not Andy.
+
+**[Sprite] Note:** The JID will be `tg:<chat-id>` from step 7. For private DMs, always use `--no-trigger-required`.
 
 ## 9. Mount Allowlist
 
@@ -173,14 +284,16 @@ Replace `USERNAME` with the actual username (from `whoami`). Run the two `sudo` 
 Run `npx tsx setup/index.ts --step verify` and parse the status block.
 
 **If STATUS=failed, fix each:**
-- SERVICE=stopped → `npm run build`, then restart: `launchctl kickstart -k gui/$(id -u)/com.nanoclaw` (macOS) or `systemctl --user restart nanoclaw` (Linux) or `bash start-nanoclaw.sh` (WSL nohup)
+- SERVICE=stopped → `npm run build`, then restart: `sprite-env services restart nanoclaw` (Sprite) or `launchctl kickstart -k gui/$(id -u)/com.nanoclaw` (macOS) or `systemctl --user restart nanoclaw` (Linux) or `bash start-nanoclaw.sh` (WSL nohup)
 - SERVICE=not_found → re-run step 10
 - CREDENTIALS=missing → re-run step 4
-- WHATSAPP_AUTH=not_found → re-run step 5
+- WHATSAPP_AUTH=not_found → re-run step 5 (non-Sprite only)
 - REGISTERED_GROUPS=0 → re-run steps 7-8
 - MOUNT_ALLOWLIST=missing → `npx tsx setup/index.ts --step mounts -- --empty`
 
-Tell user to test: send a message in their registered chat. Show: `tail -f logs/nanoclaw.log`
+**[Sprite] Collect chat ID now:** If step 7 was deferred because the service wasn't running, now is the time. The Telegram bot is live — tell the user to send `/chatid` to the bot, then complete steps 7-8 with the returned chat ID. After registering, restart the service: `sprite-env services restart nanoclaw`.
+
+Tell user to test: send a message in their registered chat. Show: `tail -f logs/nanoclaw.log` (or `/.sprite/logs/services/nanoclaw.log` on Sprite)
 
 ## Troubleshooting
 
