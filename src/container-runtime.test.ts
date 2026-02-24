@@ -62,9 +62,14 @@ describe('ensureContainerRuntimeRunning', () => {
     expect(logger.debug).toHaveBeenCalledWith('Container runtime already running');
   });
 
-  it('throws when docker info fails', () => {
+  it('throws when docker info fails and auto-start fails', () => {
+    // First call: docker info fails
     mockExecSync.mockImplementationOnce(() => {
       throw new Error('Cannot connect to the Docker daemon');
+    });
+    // Second call: sudo dockerd start attempt
+    mockExecSync.mockImplementationOnce(() => {
+      throw new Error('dockerd failed');
     });
 
     expect(() => ensureContainerRuntimeRunning()).toThrow(

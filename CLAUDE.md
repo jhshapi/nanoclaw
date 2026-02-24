@@ -44,6 +44,12 @@ npm run build        # Compile TypeScript
 
 Service management:
 ```bash
+# Sprite VM (current)
+sprite-env services start nanoclaw
+sprite-env services stop nanoclaw
+sprite-env services restart nanoclaw
+sprite-env services get nanoclaw          # check status/PID
+
 # macOS (launchd)
 launchctl load ~/Library/LaunchAgents/com.nanoclaw.plist
 launchctl unload ~/Library/LaunchAgents/com.nanoclaw.plist
@@ -58,3 +64,25 @@ systemctl --user restart nanoclaw
 ## Container Build Cache
 
 The container buildkit caches the build context aggressively. `--no-cache` alone does NOT invalidate COPY steps — the builder's volume retains stale files. To force a truly clean rebuild, prune the builder then re-run `./container/build.sh`.
+
+## Runbook: Agent Not Responding
+
+**Symptom:** Messages sent to the bot go unanswered.
+
+**Quick check:**
+```bash
+docker ps --format "table {{.Names}}\t{{.Status}}\t{{.CreatedAt}}"
+tail -20 logs/nanoclaw.log
+```
+
+**Most common cause:** A container is stuck. The agent container stays alive between turns waiting for follow-up messages, but occasionally hangs indefinitely (observed root cause unclear — the 30.5-min hard timeout in `container-runner.ts` failed to fire). While stuck, no new containers can spawn for that group.
+
+**Fix:**
+```bash
+docker kill nanoclaw-main-<id>   # or nanoclaw-<group>-<id>
+```
+The slot frees immediately and the next message will spawn a fresh container.
+
+**To diagnose further:** Check if `timedOut: false` appears in the container close log (`groups/main/logs/container-*.log`) — if so, the hard timeout never fired. A log entry "Container timeout, stopping gracefully" at the expected time (~30 min after last agent output) would confirm the timer is working.
+
+**Sprite VM note:** NanoClaw runs as a Sprite service (`service.sh` wrapper) which auto-restarts on VM wake. The VM sleeps when idle — Telegram long-polling usually keeps it awake, but if nanoclaw dies, the service will restart it. Logs for the service itself are at `/.sprite/logs/services/nanoclaw.log`.

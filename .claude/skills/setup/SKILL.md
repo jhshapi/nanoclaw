@@ -85,6 +85,8 @@ AskUserQuestion: Claude subscription (Pro/Max) vs Anthropic API key?
 
 ## 5. WhatsApp Authentication
 
+**If TELEGRAM_ONLY=true in `.env`:** Skip this step entirely — WhatsApp is not needed.
+
 If HAS_AUTH=true, confirm: keep or re-authenticate?
 
 **Choose auth method based on environment (from step 2):**
@@ -132,10 +134,17 @@ AskUserQuestion: Agent access to external directories?
 ## 10. Start Service
 
 If service already running: unload first.
+- Sprite VM: `sprite-env services stop nanoclaw`
 - macOS: `launchctl unload ~/Library/LaunchAgents/com.nanoclaw.plist`
 - Linux: `systemctl --user stop nanoclaw` (or `systemctl stop nanoclaw` if root)
 
-Run `npx tsx setup/index.ts --step service` and parse the status block.
+**Sprite VM (detected by `sprite-env` being available):** Use Sprite services for auto-restart on VM wake. Ensure `service.sh` exists in the project root, then:
+```bash
+sprite-env services create nanoclaw --cmd /path/to/nanoclaw/service.sh --no-stream
+```
+Verify with `sprite-env services get nanoclaw`. Skip the `npx tsx setup/index.ts --step service` script — it doesn't know about Sprite services.
+
+**All other platforms:** Run `npx tsx setup/index.ts --step service` and parse the status block.
 
 **If FALLBACK=wsl_no_systemd:** WSL without systemd detected. Tell user they can either enable systemd in WSL (`echo -e "[boot]\nsystemd=true" | sudo tee /etc/wsl.conf` then restart WSL) or use the generated `start-nanoclaw.sh` wrapper.
 
@@ -183,4 +192,6 @@ Tell user to test: send a message in their registered chat. Show: `tail -f logs/
 
 **WhatsApp disconnected:** `npm run auth` then rebuild and restart: `npm run build && launchctl kickstart -k gui/$(id -u)/com.nanoclaw` (macOS) or `systemctl --user restart nanoclaw` (Linux).
 
-**Unload service:** macOS: `launchctl unload ~/Library/LaunchAgents/com.nanoclaw.plist` | Linux: `systemctl --user stop nanoclaw`
+**Unload service:** Sprite: `sprite-env services stop nanoclaw` | macOS: `launchctl unload ~/Library/LaunchAgents/com.nanoclaw.plist` | Linux: `systemctl --user stop nanoclaw`
+
+**Sprite VM sleep:** The VM sleeps when idle, killing non-service processes. NanoClaw must run as a Sprite service (not nohup/systemd) to auto-restart on wake. Logs at `/.sprite/logs/services/nanoclaw.log`.
