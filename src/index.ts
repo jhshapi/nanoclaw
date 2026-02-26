@@ -396,6 +396,59 @@ function recoverPendingMessages(): void {
   }
 }
 
+/**
+ * Pre-warm containers for all registered groups on startup.
+ * Spawns each container with a lightweight init prompt so MCP servers
+ * are ready before the first real message arrives. Fire-and-forget.
+ */
+function warmupGroups(): void {
+  for (const [chatJid, group] of Object.entries(registeredGroups)) {
+    logger.info({ group: group.name }, 'Warming up container');
+
+    let idleTimer: ReturnType<typeof setTimeout> | null = null;
+    const resetIdleTimer = () => {
+      if (idleTimer) clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => {
+        logger.debug({ group: group.name }, 'Warmup idle timeout, closing container');
+        queue.closeStdin(chatJid);
+      }, IDLE_TIMEOUT);
+    };
+
+    let isWarmup = true;
+    queue.runCustom(chatJid, async () => {
+      await runAgent(group, '(system: initializing, do not reply to the user)', chatJid, async (output) => {
+        if (output.newSessionId) {
+          sessions[group.folder] = output.newSessionId;
+          setSession(group.folder, output.newSessionId);
+        }
+
+        if (isWarmup) {
+          isWarmup = false;
+          logger.info({ group: group.name }, 'Container warmed up');
+          resetIdleTimer();
+          return;
+        }
+
+        // Real message results (from IPC follow-ups) — send to Telegram
+        if (output.result) {
+          const channel = findChannel(channels, chatJid);
+          if (channel) {
+            const raw = typeof output.result === 'string' ? output.result : JSON.stringify(output.result);
+            const text = raw.replace(/<internal>[\s\S]*?<\/internal>/g, '').trim();
+            if (text) {
+              await channel.sendMessage(chatJid, text);
+            }
+          }
+        }
+        resetIdleTimer();
+      });
+      if (idleTimer) clearTimeout(idleTimer);
+    }).catch(err => {
+      logger.warn({ group: group.name, err }, 'Container warmup failed');
+    });
+  }
+}
+
 function ensureContainerSystemRunning(): void {
   try {
     ensureContainerRuntimeRunning();
@@ -477,6 +530,7 @@ async function main(): Promise<void> {
   queue.setProcessMessagesFn(processGroupMessages);
   recoverPendingMessages();
   startMessageLoop();
+  warmupGroups();
 }
 
 // Guard: only run when executed directly, not when imported by tests

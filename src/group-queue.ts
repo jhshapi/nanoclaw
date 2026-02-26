@@ -181,6 +181,35 @@ export class GroupQueue {
     }
   }
 
+  /**
+   * Run a custom function as the active container for a group.
+   * Used for warmup: spawns the container, marks group active,
+   * and cleans up when done. Fire-and-forget from caller.
+   */
+  async runCustom(groupJid: string, fn: () => Promise<void>): Promise<void> {
+    const state = this.getGroup(groupJid);
+    if (state.active) return;
+
+    state.active = true;
+    state.idleWaiting = false;
+    state.isTaskContainer = false;
+    state.pendingMessages = false;
+    this.activeCount++;
+
+    try {
+      await fn();
+    } catch (err) {
+      logger.error({ groupJid, err }, 'Error in custom container run');
+    } finally {
+      state.active = false;
+      state.process = null;
+      state.containerName = null;
+      state.groupFolder = null;
+      this.activeCount--;
+      this.drainGroup(groupJid);
+    }
+  }
+
   private async runForGroup(
     groupJid: string,
     reason: 'messages' | 'drain',

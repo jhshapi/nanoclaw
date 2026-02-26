@@ -454,8 +454,8 @@ async function runQuery(
         },
         ...(containerInput.secrets?.SLACK_MCP_XOXC_TOKEN ? {
           'slack-imxp': {
-            command: 'npx',
-            args: ['-y', 'slack-mcp-server@latest', '--transport', 'stdio'],
+            command: 'slack-mcp-server',
+            args: ['--transport', 'stdio'],
             env: {
               SLACK_MCP_XOXC_TOKEN: containerInput.secrets.SLACK_MCP_XOXC_TOKEN,
               SLACK_MCP_XOXD_TOKEN: containerInput.secrets.SLACK_MCP_XOXD_TOKEN || '',
@@ -465,8 +465,8 @@ async function runQuery(
         } : {}),
         ...(containerInput.secrets?.NOTION_API_TOKEN ? {
           'notion-query': {
-            command: 'npx',
-            args: ['-y', '@suekou/mcp-notion-server'],
+            command: 'mcp-notion-server',
+            args: [],
             env: {
               NOTION_API_TOKEN: containerInput.secrets.NOTION_API_TOKEN,
             },
@@ -560,6 +560,7 @@ async function main(): Promise<void> {
   // Build SDK env: merge secrets into process.env for the SDK only.
   // Secrets never touch process.env itself, so Bash subprocesses can't see them.
   const sdkEnv: Record<string, string | undefined> = { ...process.env };
+  sdkEnv['CLAUDE_AGENT_SDK_SKIP_VERSION_CHECK'] = '1';
   for (const [key, value] of Object.entries(containerInput.secrets || {})) {
     sdkEnv[key] = value;
   }

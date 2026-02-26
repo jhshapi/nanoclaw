@@ -35,8 +35,9 @@ RUN pip install --break-system-packages workspace-mcp
 ENV AGENT_BROWSER_EXECUTABLE_PATH=/usr/bin/chromium
 ENV PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium
 
-# Install agent-browser and claude-code globally
-RUN npm install -g agent-browser @anthropic-ai/claude-code
+# Install agent-browser, claude-code, and MCP server packages globally
+# Pre-installing MCP servers avoids npx downloading them on every container start
+RUN npm install -g agent-browser @anthropic-ai/claude-code slack-mcp-server @suekou/mcp-notion-server
 
 # Create app directory
 WORKDIR /app
