@@ -22,6 +22,66 @@ import { CONTAINER_RUNTIME_BIN, readonlyMountArgs, stopContainer } from './conta
 import { validateAdditionalMounts } from './mount-security.js';
 import { RegisteredGroup } from './types.js';
 
+/**
+ * Git sync for groups with a gitSync config.
+ * Pre-run: pull latest changes before spawning the container.
+ * Post-run: commit and push any changes made by the agent.
+ */
+async function gitSync(
+  repoPath: string,
+  phase: 'pre' | 'post',
+  groupName: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const run = (cmd: string): Promise<{ stdout: string; stderr: string; code: number }> =>
+    new Promise((resolve) => {
+      exec(cmd, { cwd: repoPath, timeout: 30_000 }, (err, stdout, stderr) => {
+        resolve({ stdout: stdout?.toString() || '', stderr: stderr?.toString() || '', code: err?.code || 0 });
+      });
+    });
+
+  if (phase === 'pre') {
+    const result = await run('git pull --rebase --autostash origin main');
+    if (result.code !== 0) {
+      // Abort rebase if it failed, leave repo clean
+      await run('git rebase --abort');
+      logger.error({ group: groupName, stderr: result.stderr }, 'Git pre-sync pull failed');
+      return { ok: false, error: `git pull failed: ${result.stderr.slice(-200)}` };
+    }
+    logger.info({ group: groupName }, 'Git pre-sync: pulled latest');
+    return { ok: true };
+  }
+
+  // Post-run: check for changes, commit, push
+  const status = await run('git status --porcelain context/');
+  if (!status.stdout.trim()) {
+    logger.debug({ group: groupName }, 'Git post-sync: no changes');
+    return { ok: true };
+  }
+
+  const addResult = await run('git add context/');
+  if (addResult.code !== 0) {
+    logger.error({ group: groupName, stderr: addResult.stderr }, 'Git post-sync: add failed');
+    return { ok: false, error: `git add failed: ${addResult.stderr.slice(-200)}` };
+  }
+
+  const commitResult = await run(
+    `git commit -m "bot: auto-sync context updates"`,
+  );
+  if (commitResult.code !== 0) {
+    logger.error({ group: groupName, stderr: commitResult.stderr }, 'Git post-sync: commit failed');
+    return { ok: false, error: `git commit failed: ${commitResult.stderr.slice(-200)}` };
+  }
+
+  const pushResult = await run('git push origin main');
+  if (pushResult.code !== 0) {
+    logger.error({ group: groupName, stderr: pushResult.stderr }, 'Git post-sync: push failed');
+    return { ok: false, error: `git push failed: ${pushResult.stderr.slice(-200)}` };
+  }
+
+  logger.info({ group: groupName, changes: status.stdout.trim() }, 'Git post-sync: committed and pushed');
+  return { ok: true };
+}
+
 // Sentinel markers for robust output parsing (must match agent-runner)
 const OUTPUT_START_MARKER = '---NANOCLAW_OUTPUT_START---';
 const OUTPUT_END_MARKER = '---NANOCLAW_OUTPUT_END---';
@@ -183,7 +243,18 @@ function buildVolumeMounts(
  * Secrets are never written to disk or mounted as files.
  */
 function readSecrets(): Record<string, string> {
-  return readEnvFile(['CLAUDE_CODE_OAUTH_TOKEN', 'ANTHROPIC_API_KEY']);
+  return readEnvFile([
+    'CLAUDE_CODE_OAUTH_TOKEN',
+    'ANTHROPIC_API_KEY',
+    'SLACK_MCP_XOXC_TOKEN',
+    'SLACK_MCP_XOXD_TOKEN',
+    'NOTION_API_TOKEN',
+    'FIREFLIES_AUTH_HEADER',
+    'NOCODB_MCP_URL',
+    'NOCODB_MCP_HEADER',
+    'GOOGLE_OAUTH_CLIENT_ID',
+    'GOOGLE_OAUTH_CLIENT_SECRET',
+  ]);
 }
 
 function buildContainerArgs(mounts: VolumeMount[], containerName: string): string[] {
@@ -222,6 +293,16 @@ export async function runContainerAgent(
   onOutput?: (output: ContainerOutput) => Promise<void>,
 ): Promise<ContainerOutput> {
   const startTime = Date.now();
+
+  // Pre-run git sync: pull latest before spawning container
+  const gitSyncPath = group.containerConfig?.gitSync?.repoPath;
+  if (gitSyncPath) {
+    const expandedPath = gitSyncPath.replace(/^~/, process.env.HOME || '');
+    const preSync = await gitSync(expandedPath, 'pre', group.name);
+    if (!preSync.ok) {
+      logger.warn({ group: group.name, error: preSync.error }, 'Git pre-sync failed, proceeding anyway');
+    }
+  }
 
   const groupDir = resolveGroupFolderPath(group.folder);
   fs.mkdirSync(groupDir, { recursive: true });
@@ -509,7 +590,16 @@ export async function runContainerAgent(
 
       // Streaming mode: wait for output chain to settle, return completion marker
       if (onOutput) {
-        outputChain.then(() => {
+        outputChain.then(async () => {
+          // Post-run git sync: commit and push any context changes
+          if (gitSyncPath) {
+            const expandedPath = gitSyncPath.replace(/^~/, process.env.HOME || '');
+            const postSync = await gitSync(expandedPath, 'post', group.name);
+            if (!postSync.ok) {
+              logger.warn({ group: group.name, error: postSync.error }, 'Git post-sync failed');
+            }
+          }
+
           logger.info(
             { group: group.name, duration, newSessionId },
             'Container completed (streaming mode)',

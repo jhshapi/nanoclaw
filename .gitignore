@@ -13,10 +13,14 @@ logs/
 groups/*
 !groups/main/
 !groups/global/
+!groups/brain/
 groups/main/*
 groups/global/*
+groups/brain/*
 !groups/main/CLAUDE.md
 !groups/global/CLAUDE.md
+!groups/brain/CLAUDE.md
+!groups/brain/agent-runner-src/
 
 # Secrets
 *.keys.json

@@ -266,20 +266,23 @@ export function validateMount(
     };
   }
 
-  // Check against blocked patterns
-  const blockedMatch = matchesBlockedPattern(
-    realPath,
-    allowlist.blockedPatterns,
-  );
-  if (blockedMatch !== null) {
-    return {
-      allowed: false,
-      reason: `Path matches blocked pattern "${blockedMatch}": "${realPath}"`,
-    };
-  }
-
-  // Check if under an allowed root
+  // Check if under an allowed root (checked first so explicit allowlist
+  // entries can override default blocked patterns like "credentials")
   const allowedRoot = findAllowedRoot(realPath, allowlist.allowedRoots);
+
+  // Check against blocked patterns (skip if path is explicitly allowed)
+  if (allowedRoot === null) {
+    const blockedMatch = matchesBlockedPattern(
+      realPath,
+      allowlist.blockedPatterns,
+    );
+    if (blockedMatch !== null) {
+      return {
+        allowed: false,
+        reason: `Path matches blocked pattern "${blockedMatch}": "${realPath}"`,
+      };
+    }
+  }
   if (allowedRoot === null) {
     return {
       allowed: false,
