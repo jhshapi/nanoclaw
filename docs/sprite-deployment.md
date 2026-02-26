@@ -77,11 +77,31 @@ Sprites hibernate after 30 seconds of inactivity. **TTY sessions (sprite exec, n
 
 ### Solution: Register as Sprite Service
 
+NanoClaw uses `process.cwd()` for PROJECT_ROOT, so it must run from the nanoclaw directory. The `--dir` flag doesn't set CWD, so use a wrapper script:
+
 ```bash
-sprite-env services create nanoclaw --cmd node --args dist/index.js
+# Create wrapper script
+sprite exec -s brain-bot -- bash -c 'cat > ~/nanoclaw/start.sh << "SCRIPT"
+#!/bin/bash
+cd /home/sprite/nanoclaw
+exec node dist/index.js
+SCRIPT
+chmod +x ~/nanoclaw/start.sh'
+
+# Register the service
+sprite exec -s brain-bot -- bash -c '
+  sprite-env services create nanoclaw --cmd /bin/bash --args /home/sprite/nanoclaw/start.sh
+'
 ```
 
-This runs NanoClaw as a managed service that automatically restarts when the VM wakes.
+This runs NanoClaw as a managed service that automatically restarts when the VM wakes. Manage with:
+```bash
+sprite exec -s brain-bot -- bash -c 'sprite-env services list'        # status
+sprite exec -s brain-bot -- bash -c 'sprite-env services restart nanoclaw'  # restart
+sprite exec -s brain-bot -- bash -c 'sprite-env services stop nanoclaw'     # stop
+```
+
+Logs go to `/.sprite/logs/services/nanoclaw.log` inside the VM.
 
 ### Fallback: Manual nohup (Non-Persistent)
 
@@ -162,20 +182,15 @@ After making changes locally:
 cd ~/src/nanoclaw
 git push fork main
 
-# On Sprite:
+# Pull and rebuild on Sprite:
 sprite exec -s brain-bot -- bash -c 'cd ~/nanoclaw && git pull && npm run build'
 
-# Restart (kill old, start new):
+# Restart the service (stops warm containers automatically):
 sprite exec -s brain-bot -- bash -c '
-  PID=$(pgrep -f "node dist/index.js"); kill $PID 2>/dev/null
-'
-# Wait a moment, then:
-sprite exec -s brain-bot -- bash -c '
-  cd ~/nanoclaw && nohup node dist/index.js > /tmp/nanoclaw.log 2>&1 &
+  docker stop $(docker ps -q --filter name=nanoclaw) 2>/dev/null
+  sprite-env services restart nanoclaw
 '
 ```
-
-Note: `pkill -f` pattern-matches the sprite exec session itself. Use `pgrep` to get the PID first, then `kill` by PID.
 
 If the Docker image changed (Dockerfile modifications), rebuild:
 ```bash
