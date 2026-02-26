@@ -475,7 +475,7 @@ async function runQuery(
         ...(containerInput.secrets?.GOOGLE_OAUTH_CLIENT_ID ? {
           'google-workspace': {
             command: 'workspace-mcp',
-            args: ['--single-user', '--tools', 'gmail', 'calendar', 'drive', '--tool-tier', 'core'],
+            args: ['--single-user', '--tools', 'gmail', 'calendar', 'drive', '--tool-tier', 'extended'],
             env: {
               GOOGLE_OAUTH_CLIENT_ID: containerInput.secrets.GOOGLE_OAUTH_CLIENT_ID,
               GOOGLE_OAUTH_CLIENT_SECRET: containerInput.secrets.GOOGLE_OAUTH_CLIENT_SECRET || '',
@@ -485,7 +485,7 @@ async function runQuery(
           },
           'google-workspace-imxp': {
             command: 'workspace-mcp',
-            args: ['--single-user', '--tools', 'gmail', 'calendar', 'drive', '--tool-tier', 'core'],
+            args: ['--single-user', '--tools', 'gmail', 'calendar', 'drive', '--tool-tier', 'extended'],
             env: {
               GOOGLE_OAUTH_CLIENT_ID: containerInput.secrets.GOOGLE_OAUTH_CLIENT_ID,
               GOOGLE_OAUTH_CLIENT_SECRET: containerInput.secrets.GOOGLE_OAUTH_CLIENT_SECRET || '',

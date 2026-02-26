@@ -50,6 +50,8 @@ Jon is in *America/Chicago* (Central Time). When he says "tomorrow", "today", "t
 | "What did I discuss with [person]?" | Search interactions for that person |
 | "Schedule [thing]" | Use `mcp__nanoclaw__schedule_task` for recurring or delayed tasks |
 | "Add [event] to calendar" | Create calendar event. *Always* resolve venue names to full street addresses (search if needed). Use America/Chicago timezone for all events. |
+| "Delete/cancel [event]" | Use `mcp__google-workspace__delete_event` with the event_id. Get the event_id from `get_events` first. |
+| "Move/change [event]" | Use `mcp__google-workspace__modify_event` to update time, location, or other fields. |
 
 ## Writing to Context Files
 
