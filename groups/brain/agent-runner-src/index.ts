@@ -58,6 +58,8 @@ interface SDKUserMessage {
 const IPC_INPUT_DIR = '/workspace/ipc/input';
 const IPC_INPUT_CLOSE_SENTINEL = path.join(IPC_INPUT_DIR, '_close');
 const IPC_POLL_MS = 500;
+const SESSION_ROTATE_BYTES = 100 * 1024; // 100KB — rotate session to avoid API bloat
+const SESSION_TRANSCRIPT_DIR = '/home/node/.claude/projects/-workspace-group';
 
 /**
  * Push-based async iterable for streaming user messages to the SDK.
@@ -138,6 +140,25 @@ function getSessionSummary(sessionId: string, transcriptPath: string): string | 
   }
 
   return null;
+}
+
+function getTranscriptSize(sessionId: string): number {
+  const transcriptPath = path.join(SESSION_TRANSCRIPT_DIR, `${sessionId}.jsonl`);
+  try {
+    return fs.statSync(transcriptPath).size;
+  } catch {
+    return 0;
+  }
+}
+
+function shouldRotateSession(sessionId: string | undefined): boolean {
+  if (!sessionId) return false;
+  const size = getTranscriptSize(sessionId);
+  if (size > SESSION_ROTATE_BYTES) {
+    log(`Session ${sessionId} transcript is ${(size / 1024).toFixed(0)}KB (>${SESSION_ROTATE_BYTES / 1024}KB), rotating`);
+    return true;
+  }
+  return false;
 }
 
 /**
@@ -607,8 +628,20 @@ async function main(): Promise<void> {
         break;
       }
 
-      // Emit session update so host can track it
-      writeOutput({ status: 'success', result: null, newSessionId: sessionId });
+      // Rotate session if transcript is too large to keep API latency low
+      if (shouldRotateSession(sessionId)) {
+        const summary = sessionId ? getSessionSummary(sessionId, path.join(SESSION_TRANSCRIPT_DIR, `${sessionId}.jsonl`)) : null;
+        if (summary) {
+          log(`Session rotated with summary: ${summary.substring(0, 80)}...`);
+        } else {
+          log('Session rotated (no summary available)');
+        }
+        sessionId = undefined;
+        resumeAt = undefined;
+      }
+
+      // Emit session update so host can track it (empty string = session was rotated)
+      writeOutput({ status: 'success', result: null, newSessionId: sessionId || '' });
 
       log('Query ended, waiting for next IPC message...');
 

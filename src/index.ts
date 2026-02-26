@@ -32,6 +32,7 @@ import {
   initDatabase,
   setRegisteredGroup,
   setRouterState,
+  clearSession,
   setSession,
   storeChatMetadata,
   storeMessage,
@@ -250,9 +251,15 @@ async function runAgent(
   // Wrap onOutput to track session ID from streamed results
   const wrappedOnOutput = onOutput
     ? async (output: ContainerOutput) => {
-        if (output.newSessionId) {
-          sessions[group.folder] = output.newSessionId;
-          setSession(group.folder, output.newSessionId);
+        if (output.newSessionId !== undefined) {
+          if (output.newSessionId === '') {
+            delete sessions[group.folder];
+            clearSession(group.folder);
+            logger.info({ group: group.name }, 'Session rotated (cleared by agent)');
+          } else {
+            sessions[group.folder] = output.newSessionId;
+            setSession(group.folder, output.newSessionId);
+          }
         }
         await onOutput(output);
       }
@@ -272,9 +279,15 @@ async function runAgent(
       wrappedOnOutput,
     );
 
-    if (output.newSessionId) {
-      sessions[group.folder] = output.newSessionId;
-      setSession(group.folder, output.newSessionId);
+    if (output.newSessionId !== undefined) {
+      if (output.newSessionId === '') {
+        delete sessions[group.folder];
+        clearSession(group.folder);
+        logger.info({ group: group.name }, 'Session rotated (cleared by agent)');
+      } else {
+        sessions[group.folder] = output.newSessionId;
+        setSession(group.folder, output.newSessionId);
+      }
     }
 
     if (output.status === 'error') {
