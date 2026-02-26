@@ -610,6 +610,18 @@ async function main(): Promise<void> {
   let resumeAt: string | undefined;
   try {
     while (true) {
+      // Rotate before starting query to avoid resuming a bloated session
+      if (shouldRotateSession(sessionId)) {
+        const summary = sessionId ? getSessionSummary(sessionId, path.join(SESSION_TRANSCRIPT_DIR, `${sessionId}.jsonl`)) : null;
+        if (summary) {
+          log(`Session rotated with summary: ${summary.substring(0, 80)}...`);
+        } else {
+          log('Session rotated (no summary available)');
+        }
+        sessionId = undefined;
+        resumeAt = undefined;
+      }
+
       log(`Starting query (session: ${sessionId || 'new'}, resumeAt: ${resumeAt || 'latest'})...`);
 
       const queryResult = await runQuery(prompt, sessionId, mcpServerPath, containerInput, sdkEnv, resumeAt);
@@ -626,18 +638,6 @@ async function main(): Promise<void> {
       if (queryResult.closedDuringQuery) {
         log('Close sentinel consumed during query, exiting');
         break;
-      }
-
-      // Rotate session if transcript is too large to keep API latency low
-      if (shouldRotateSession(sessionId)) {
-        const summary = sessionId ? getSessionSummary(sessionId, path.join(SESSION_TRANSCRIPT_DIR, `${sessionId}.jsonl`)) : null;
-        if (summary) {
-          log(`Session rotated with summary: ${summary.substring(0, 80)}...`);
-        } else {
-          log('Session rotated (no summary available)');
-        }
-        sessionId = undefined;
-        resumeAt = undefined;
       }
 
       // Emit session update so host can track it (empty string = session was rotated)
