@@ -8,8 +8,10 @@ import { readEnvFile } from './env.js';
 const envConfig = readEnvFile([
   'ASSISTANT_NAME',
   'ASSISTANT_HAS_OWN_NUMBER',
+  'IDLE_TIMEOUT',
   'TELEGRAM_BOT_TOKEN',
   'TELEGRAM_ONLY',
+  'TZ',
 ]);
 
 export const ASSISTANT_NAME =
@@ -47,7 +49,7 @@ export const CONTAINER_MAX_OUTPUT_SIZE = parseInt(
 ); // 10MB default
 export const IPC_POLL_INTERVAL = 1000;
 export const IDLE_TIMEOUT = parseInt(
-  process.env.IDLE_TIMEOUT || '1800000',
+  process.env.IDLE_TIMEOUT || envConfig.IDLE_TIMEOUT || '1800000',
   10,
 ); // 30min default — how long to keep container alive after last result
 export const MAX_CONCURRENT_CONTAINERS = Math.max(
@@ -67,7 +69,7 @@ export const TRIGGER_PATTERN = new RegExp(
 // Timezone for scheduled tasks (cron expressions, etc.)
 // Uses system timezone by default
 export const TIMEZONE =
-  process.env.TZ || Intl.DateTimeFormat().resolvedOptions().timeZone;
+  process.env.TZ || envConfig.TZ || Intl.DateTimeFormat().resolvedOptions().timeZone;
 
 // Telegram configuration
 export const TELEGRAM_BOT_TOKEN =
