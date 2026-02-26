@@ -23,6 +23,10 @@ Specs and plans are at `/workspace/extra/specs/` (read-only).
 
 Schema reference: `/workspace/extra/context/schema.md`
 
+## Timezone
+
+Jon is in *America/Chicago* (Central Time). When he says "tomorrow", "today", "this Friday", etc., interpret relative to CT. Calendar events must use this timezone.
+
 ## Responding via Telegram
 
 - Keep responses conversational and concise
@@ -31,6 +35,7 @@ Schema reference: `/workspace/extra/context/schema.md`
 - Bullet points with plain dashes or dots
 - When asked about tasks, people, or context, read the relevant files first
 - For complex answers, use `mcp__nanoclaw__send_message` to send partial updates while working
+- *ALWAYS confirm completion.* After finishing any action (creating calendar events, sending emails, updating files), send a confirmation message via `mcp__nanoclaw__send_message` summarizing what you did. Never go silent after completing work.
 
 ## What You Can Do
 
@@ -44,6 +49,7 @@ Schema reference: `/workspace/extra/context/schema.md`
 | "Update [task] status" | Edit the task file |
 | "What did I discuss with [person]?" | Search interactions for that person |
 | "Schedule [thing]" | Use `mcp__nanoclaw__schedule_task` for recurring or delayed tasks |
+| "Add [event] to calendar" | Create calendar event. *Always* resolve venue names to full street addresses (search if needed). Use America/Chicago timezone for all events. |
 
 ## Writing to Context Files
 

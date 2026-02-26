@@ -214,7 +214,11 @@ function buildVolumeMounts(
   // Copy agent-runner source into a per-group writable location so agents
   // can customize it (add tools, change behavior) without affecting other
   // groups. Recompiled on container startup via entrypoint.sh.
-  const agentRunnerSrc = path.join(projectRoot, 'container', 'agent-runner', 'src');
+  // Prefer group-specific agent-runner-src (groups/<folder>/agent-runner-src/)
+  // over the default (container/agent-runner/src/).
+  const groupCustomRunnerSrc = path.join(GROUPS_DIR, group.folder, 'agent-runner-src');
+  const defaultAgentRunnerSrc = path.join(projectRoot, 'container', 'agent-runner', 'src');
+  const agentRunnerSrc = fs.existsSync(groupCustomRunnerSrc) ? groupCustomRunnerSrc : defaultAgentRunnerSrc;
   const groupAgentRunnerDir = path.join(DATA_DIR, 'sessions', group.folder, 'agent-runner-src');
   if (!fs.existsSync(groupAgentRunnerDir) && fs.existsSync(agentRunnerSrc)) {
     fs.cpSync(agentRunnerSrc, groupAgentRunnerDir, { recursive: true });
