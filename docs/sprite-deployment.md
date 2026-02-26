@@ -185,7 +185,13 @@ sprite exec -s brain-bot -- bash -c '
 '
 ```
 
-Agent-runner source changes don't require image rebuild (bind-mounted from host).
+Agent-runner source changes don't require image rebuild (bind-mounted from host). However, the bind-mount points at `data/sessions/<group>/agent-runner-src/`, a copy made on first container creation. After updating `groups/<group>/agent-runner-src/`, either restart the host process (which re-syncs the copy) or manually copy:
+```bash
+sprite exec -s brain-bot -- bash -c '
+  cp ~/nanoclaw/groups/brain/agent-runner-src/index.ts \
+     ~/nanoclaw/data/sessions/brain/agent-runner-src/index.ts
+'
+```
 
 ## Monitoring
 
@@ -221,3 +227,4 @@ The Sprite VM is under the `shapiro-jon-gmail-com` org (Sprites-managed, not vis
 3. **TZ not read from .env without whitelist**: Must be in `readEnvFile` keys in `config.ts`
 4. **Session bloat causes API latency**: Session rotation at 100KB mitigates this
 5. **Orphan Docker containers after host kill**: `docker stop <name>` before restarting
+6. **Stale agent-runner source copy**: `container-runner.ts` now re-syncs on every spawn, but if running an older host build, manually copy from `groups/` to `data/sessions/` after `git pull`

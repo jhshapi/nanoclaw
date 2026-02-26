@@ -220,7 +220,7 @@ function buildVolumeMounts(
   const defaultAgentRunnerSrc = path.join(projectRoot, 'container', 'agent-runner', 'src');
   const agentRunnerSrc = fs.existsSync(groupCustomRunnerSrc) ? groupCustomRunnerSrc : defaultAgentRunnerSrc;
   const groupAgentRunnerDir = path.join(DATA_DIR, 'sessions', group.folder, 'agent-runner-src');
-  if (!fs.existsSync(groupAgentRunnerDir) && fs.existsSync(agentRunnerSrc)) {
+  if (fs.existsSync(agentRunnerSrc)) {
     fs.cpSync(agentRunnerSrc, groupAgentRunnerDir, { recursive: true });
   }
   mounts.push({
